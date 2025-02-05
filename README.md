@@ -122,11 +122,17 @@ Duplicate records in both the customer and order tables were identified using a 
 
 ```sql
 WITH cte_duplicates AS (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id, order_id ORDER BY created_at) AS row_num
-    FROM orders
+    SELECT 
+        customer_id,
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY customer_id) AS row_num
+    FROM customers
 )
-DELETE FROM orders
-WHERE order_id IN (SELECT order_id FROM cte_duplicates WHERE row_num > 1);
+DELETE FROM customers
+WHERE customer_id IN (
+    SELECT customer_id
+    FROM cte_duplicates
+    WHERE row_num > 1
+);
 ```
 
 ## Handling Null Values
@@ -139,11 +145,13 @@ For records where the address was missing, `COALESCE()` was used to replace null
 UPDATE customers
 SET address = COALESCE(address, 'Unknown Address')
 WHERE address IS NULL;
+
 ```
 ### Payment Statuses:
 Orders with missing payment statuses were assigned a default value of "Pending" by checking for NULL and updating the relevant records using the COALESCE() function.
 
-```UPDATE orders
+```sql
+UPDATE orders
 SET payment_status = COALESCE(payment_status, 'Pending')
 WHERE payment_status IS NULL;
 ```
@@ -190,84 +198,90 @@ To address the business challenges, the following SQL-based tasks were undertake
 
 ### 1. Top Selling Products:
 
-```
+```sql
 SELECT 
-  oi.product_id,
-  p.product_name,
-  SUM(oi.total_sale) as total_sale,
-  COUNT(o.order_id) as total_orders
-FROM orders as o
-JOIN order_items as oi ON oi.order_id = o.order_id
-JOIN products as p ON p.product_id = oi.product_id
-GROUP BY 1, 2
-ORDER BY 3 DESC
+    p.product_name,
+    SUM(oi.quantity) AS total_quantity_sold
+FROM 
+    order_items oi
+JOIN 
+    products p ON oi.product_id = p.product_id
+GROUP BY 
+    p.product_name
+ORDER BY 
+    total_quantity_sold DESC
 LIMIT 10;
+
 ```
 
 ### 2. Revenue by Category
 
-```
+```sql
 SELECT 
-  p.category_id,
-  c.category_name,
-  SUM(oi.total_sale) as total_sale,
-  SUM(oi.total_sale) /
-    (SELECT SUM(total_sale) FROM order_items) * 100 as contribution
-FROM order_items as oi
-JOIN products as p ON p.product_id = oi.product_id
-LEFT JOIN category as c ON c.category_id = p.category_id
-GROUP BY 1, 2
-ORDER BY 3 DESC;
+    c.category_name,
+    SUM(oi.quantity * oi.price_per_unit) AS total_revenue
+FROM 
+    order_items oi
+JOIN 
+    products p ON oi.product_id = p.product_id
+JOIN 
+    category c ON p.category_id = c.category_id
+GROUP BY 
+    c.category_name
+ORDER BY 
+    total_revenue DESC;
+
 
 ```
 
 ### 3. Average Order Value (AOV)
 
-```
+```sql
 SELECT 
-  c.customer_id,
-  CONCAT(c.first_name, ' ', c.last_name) as full_name,
-  SUM(total_sale) / COUNT(o.order_id) as AOV,
-  COUNT(o.order_id) as total_orders
-FROM orders as o
-JOIN customers as c ON c.customer_id = o.customer_id
-JOIN order_items as oi ON oi.order_id = o.order_id
-GROUP BY 1, 2
-HAVING COUNT(o.order_id) > 5;
+    AVG(order_revenue) AS average_order_value
+FROM (
+    SELECT 
+        oi.order_id,
+        SUM(oi.quantity * oi.price_per_unit) AS order_revenue
+    FROM 
+        order_items oi
+    GROUP BY 
+        oi.order_id
+) AS order_revenues;
 
 ```
 
 ### 4. Monthly Sales Trend
 
-```
+```sql
 SELECT 
-  year,
-  month,
-  total_sale as current_month_sale,
-  LAG(total_sale, 1) OVER(ORDER BY year, month) as last_month_sale
-FROM (
-  SELECT 
-    EXTRACT(MONTH FROM o.order_date) as month,
-    EXTRACT(YEAR FROM o.order_date) as year,
-    ROUND(SUM(oi.total_sale::numeric), 2) as total_sale
-  FROM orders as o
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  WHERE o.order_date >= CURRENT_DATE - INTERVAL '1 year'
-  GROUP BY 1, 2
-  ORDER BY year, month
-) as t1;
+    DATE_FORMAT(o.order_date, '%Y-%m') AS month,
+    SUM(oi.quantity * oi.price_per_unit) AS total_sales
+FROM 
+    orders o
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+GROUP BY 
+    DATE_FORMAT(o.order_date, '%Y-%m')
+ORDER BY 
+    month ASC;
 
 ```
 
 ### 5. Customers with No Purchases
 
-```
-SELECT *
-FROM customers
-WHERE customer_id NOT IN (
-  SELECT DISTINCT customer_id
-  FROM orders
-);
+```sql
+SELECT 
+    c.customer_id,
+    c.first_name,
+    c.last_name
+FROM 
+    customers c
+LEFT JOIN 
+    orders o ON c.customer_id = o.customer_id
+WHERE 
+    o.order_id IS NULL;
+
 ```
 
 -- Approach 2
@@ -281,136 +295,133 @@ WHERE o.customer_id IS NULL;
 
 ### 6. Least-Selling Categories by State
 
-```
-WITH ranking_table AS (
-  SELECT 
+```sql
+SELECT 
     c.state,
     cat.category_name,
-    SUM(oi.total_sale) as total_sale,
-    RANK() OVER(PARTITION BY c.state ORDER BY SUM(oi.total_sale) ASC) as rank
-  FROM orders as o
-  JOIN customers as c ON o.customer_id = c.customer_id
-  JOIN order_items as oi ON o.order_id = oi.order_id
-  JOIN products as p ON oi.product_id = p.product_id
-  JOIN category as cat ON cat.category_id = p.category_id
-  GROUP BY 1, 2
-)
-SELECT *
-FROM ranking_table
-WHERE rank = 1;
+    SUM(oi.quantity * oi.price_per_unit) AS total_sales
+FROM 
+    order_items oi
+JOIN 
+    orders o ON oi.order_id = o.order_id
+JOIN 
+    customers c ON o.customer_id = c.customer_id
+JOIN 
+    products p ON oi.product_id = p.product_id
+JOIN 
+    category cat ON p.category_id = cat.category_id
+GROUP BY 
+    c.state, cat.category_name
+ORDER BY 
+    c.state ASC, total_sales ASC;
 
 ```
 ### 7. Customer Lifetime Value (CLTV)
 
-```
+```sql
 SELECT 
-  c.customer_id,
-  CONCAT(c.first_name, ' ', c.last_name) as full_name,
-  SUM(total_sale) as CLTV,
-  DENSE_RANK() OVER(ORDER BY SUM(total_sale) DESC) as cx_ranking
-FROM orders as o
-JOIN customers as c ON c.customer_id = o.customer_id
-JOIN order_items as oi ON oi.order_id = o.order_id
-GROUP BY 1, 2;
+    c.customer_id,
+    c.first_name,
+    c.last_name,
+    SUM(oi.quantity * oi.price_per_unit) AS lifetime_value
+FROM 
+    customers c
+JOIN 
+    orders o ON c.customer_id = o.customer_id
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+GROUP BY 
+    c.customer_id, c.first_name, c.last_name
+ORDER BY 
+    lifetime_value DESC;
 
 ```
 
 ### 8. Inventory Stock Alerts
 
-```
+```sql
 SELECT 
-  i.inventory_id,
-  p.product_name,
-  i.stock as current_stock_left,
-  i.last_stock_date,
-  i.warehouse_id
-FROM inventory as i
-JOIN products as p ON p.product_id = i.product_id
-WHERE stock < 10;
+    p.product_name,
+    i.stock,
+    i.last_stock_date,
+    i.warehouse_id
+FROM 
+    inventory i
+JOIN 
+    products p ON i.product_id = p.product_id
+WHERE 
+    i.stock < 10
+ORDER BY 
+    i.stock ASC;
+
 
 ```
 
 ### 9. Shipping Delays
 
-```
+```sql
 SELECT 
-  c.*,
-  o.*,
-  s.shipping_providers,
-  s.shipping_date - o.order_date as days_took_to_ship
-FROM orders as o
-JOIN customers as c ON c.customer_id = o.customer_id
-JOIN shippings as s ON o.order_id = s.order_id
-WHERE s.shipping_date - o.order_date > 3;
+    o.order_id,
+    o.order_date,
+    s.shipping_date,
+    s.return_date,
+    s.delivery_status,
+    DATEDIFF(s.shipping_date, o.order_date) AS shipping_delay_days
+FROM 
+    orders o
+JOIN 
+    shippings s ON o.order_id = s.order_id
+WHERE 
+    DATEDIFF(s.shipping_date, o.order_date) > 5
+ORDER BY 
+    shipping_delay_days DESC;
+
 
 ```
 
 ### 10. Payment Success Rate
 
-```
+```sql
 SELECT 
-  p.payment_status,
-  COUNT(*) as total_cnt,
-  COUNT(*)::numeric / (SELECT COUNT(*) FROM payments) * 100 as percentage
-FROM orders as o
-JOIN payments as p ON o.order_id = p.order_id
-GROUP BY 1;
+    COUNT(CASE WHEN p.payment_status = 'Success' THEN 1 END) * 100.0 / COUNT(*) AS payment_success_rate
+FROM 
+    payments p;
 
 ```
 ### 11. Top Performing Sellers
 
-```
-WITH top_sellers AS (
-  SELECT 
+```sql
+SELECT 
     s.seller_id,
     s.seller_name,
-    SUM(oi.total_sale) as total_sale
-  FROM orders as o
-  JOIN sellers as s ON o.seller_id = s.seller_id
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  GROUP BY 1, 2
-  ORDER BY 3 DESC
-  LIMIT 5
-),
-sellers_reports AS (
-  SELECT 
-    o.seller_id,
-    ts.seller_name,
-    o.order_status,
-    COUNT(*) as total_orders
-  FROM orders as o
-  JOIN top_sellers as ts ON ts.seller_id = o.seller_id
-  WHERE o.order_status NOT IN ('Inprogress', 'Returned')
-  GROUP BY 1, 2, 3
-)
-SELECT 
-  seller_id,
-  seller_name,
-  SUM(CASE WHEN order_status = 'Completed' THEN total_orders ELSE 0 END) as Completed_orders,
-  SUM(CASE WHEN order_status = 'Cancelled' THEN total_orders ELSE 0 END) as Cancelled_orders,
-  SUM(total_orders) as total_orders,
-  SUM(CASE WHEN order_status = 'Completed' THEN total_orders ELSE 0 END)::numeric / SUM(total_orders)::numeric * 100 as successful_orders_percentage
-FROM sellers_reports
-GROUP BY 1, 2;
+    SUM(oi.quantity * oi.price_per_unit) AS total_sales
+FROM 
+    sellers s
+JOIN 
+    orders o ON s.seller_id = o.seller_id
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+GROUP BY 
+    s.seller_id, s.seller_name
+ORDER BY 
+    total_sales DESC
+LIMIT 10;
+
 ```
 ### 12. Product Profit Margin
 Calculate the profit margin for each product (difference between price and cost of goods sold).
 
 ```sql
 SELECT 
-  product_id,
-  product_name,
-  profit_margin,
-  DENSE_RANK() OVER( ORDER BY profit_margin DESC) as product_ranking
-FROM (
-  SELECT 
-    p.product_id,
     p.product_name,
-    SUM(total_sale - (p.cogs * oi.quantity))/SUM(total_sale) * 100 as profit_margin
-  FROM order_items as oi
-  JOIN products as p ON oi.product_id = p.product_id
-  GROUP BY 1, 2
-) as t1;
+    p.price,
+    p.cogs,
+    ((p.price - p.cogs) / p.price) * 100 AS profit_margin
+FROM 
+    products p
+ORDER BY 
+    profit_margin DESC;
+
 ```
 
 
@@ -419,34 +430,38 @@ Query the top 10 products by the number of returns.
 
 ```sql
 SELECT 
-  p.product_id,
-  p.product_name,
-  COUNT(*) as total_unit_sold,
-  SUM(CASE WHEN o.order_status = 'Returned' THEN 1 ELSE 0 END) as total_returned,
-  SUM(CASE WHEN o.order_status = 'Returned' THEN 1 ELSE 0 END)::numeric/COUNT(*)::numeric * 100 as return_percentage
-FROM order_items as oi
-JOIN products as p ON oi.product_id = p.product_id
-JOIN orders as o ON o.order_id = oi.order_id
-GROUP BY 1, 2
-ORDER BY 5 DESC;
+    p.product_name,
+    COUNT(s.shipping_id) AS return_count
+FROM 
+    shippings s
+JOIN 
+    order_items oi ON s.order_id = oi.order_id
+JOIN 
+    products p ON oi.product_id = p.product_id
+WHERE 
+    s.return_date IS NOT NULL
+GROUP BY 
+    p.product_name
+ORDER BY 
+    return_count DESC
+LIMIT 10;
+
 ```
 
 ### 14. Inactive Sellers
 Identify sellers who haven’t made any sales in the last 6 months.
 
 ```sql
-WITH cte1 AS (
-  SELECT * FROM sellers
-  WHERE seller_id NOT IN (SELECT seller_id FROM orders WHERE order_date >= CURRENT_DATE - INTERVAL '6 month')
-)
 SELECT 
-  o.seller_id,
-  MAX(o.order_date) as last_sale_date,
-  MAX(oi.total_sale) as last_sale_amount
-FROM orders as o
-JOIN cte1 ON cte1.seller_id = o.seller_id
-JOIN order_items as oi ON o.order_id = oi.order_id
-GROUP BY 1;
+    s.seller_id,
+    s.seller_name
+FROM 
+    sellers s
+LEFT JOIN 
+    orders o ON s.seller_id = o.seller_id
+WHERE 
+    o.order_id IS NULL;
+
 ```
 
 ### 15. Identify Customers into Returning or New
@@ -454,42 +469,57 @@ Categorize customers as returning if they have made more than 5 returns, otherwi
 
 ```sql
 SELECT 
-  c_full_name as customers,
-  total_orders,
-  total_return,
-  CASE
-    WHEN total_return > 5 THEN 'Returning_customers'
-    ELSE 'New'
-  END as cx_category
-FROM (
-  SELECT 
-    CONCAT(c.first_name, ' ', c.last_name) as c_full_name,
-    COUNT(o.order_id) as total_orders,
-    SUM(CASE WHEN o.order_status = 'Returned' THEN 1 ELSE 0 END) as total_return
-  FROM orders as o
-  JOIN customers as c ON c.customer_id = o.customer_id
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  GROUP BY 1
-);
+    c.customer_id,
+    c.first_name,
+    c.last_name,
+    MIN(o.order_date) AS first_order_date,
+    CASE 
+        WHEN MIN(o.order_date) = MAX(o.order_date) THEN 'New'
+        ELSE 'Returning'
+    END AS customer_status
+FROM 
+    customers c
+JOIN 
+    orders o ON c.customer_id = o.customer_id
+GROUP BY 
+    c.customer_id, c.first_name, c.last_name
+ORDER BY 
+    first_order_date;
+
 ```
 
 ### 16. Top 5 Customers by Orders in Each State
 Identify the top 5 customers with the highest number of orders for each state.
 
 ```sql
-SELECT * FROM (
-  SELECT 
-    c.state,
-    CONCAT(c.first_name, ' ', c.last_name) as customers,
-    COUNT(o.order_id) as total_orders,
-    SUM(total_sale) as total_sale,
-    DENSE_RANK() OVER(PARTITION BY c.state ORDER BY COUNT(o.order_id) DESC) as rank
-  FROM orders as o
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  JOIN customers as c ON c.customer_id = o.customer_id
-  GROUP BY 1, 2
-) as t1
-WHERE rank <= 5;
+WITH ranked_customers AS (
+    SELECT 
+        c.customer_id,
+        c.first_name,
+        c.last_name,
+        c.state,
+        COUNT(o.order_id) AS order_count,
+        RANK() OVER (PARTITION BY c.state ORDER BY COUNT(o.order_id) DESC) AS rank
+    FROM 
+        customers c
+    JOIN 
+        orders o ON c.customer_id = o.customer_id
+    GROUP BY 
+        c.customer_id, c.first_name, c.last_name, c.state
+)
+SELECT 
+    customer_id,
+    first_name,
+    last_name,
+    state,
+    order_count
+FROM 
+    ranked_customers
+WHERE 
+    rank <= 5
+ORDER BY 
+    state, rank;
+
 ```
 
 ### 17. Revenue by Shipping Provider
@@ -497,113 +527,92 @@ Calculate the total revenue handled by each shipping provider.
 
 ```sql
 SELECT 
-  s.shipping_providers,
-  COUNT(o.order_id) as order_handled,
-  SUM(oi.total_sale) as total_sale,
-  COALESCE(AVG(s.return_date - s.shipping_date), 0) as average_days
-FROM orders as o
-JOIN order_items as oi ON oi.order_id = o.order_id
-JOIN shippings as s ON s.order_id = o.order_id
-GROUP BY 1;
+    s.shipping_providers,
+    SUM(oi.quantity * oi.price_per_unit) AS total_revenue
+FROM 
+    shippings s
+JOIN 
+    orders o ON s.order_id = o.order_id
+JOIN 
+    order_items oi ON o.order_id = oi.order_id
+GROUP BY 
+    s.shipping_providers
+ORDER BY 
+    total_revenue DESC;
+
 ```
 
 ### 18. Top 10 Products with Highest Decreasing Revenue Ratio
 Compare the revenue decrease ratio between last year (2022) and the current year (2023).
 
 ```sql
-WITH last_year_sale AS (
-  SELECT 
-    p.product_id,
-    p.product_name,
-    SUM(oi.total_sale) as revenue
-  FROM orders as o
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  JOIN products as p ON p.product_id = oi.product_id
-  WHERE EXTRACT(YEAR FROM o.order_date) = 2022
-  GROUP BY 1, 2
-),
-current_year_sale AS (
-  SELECT 
-    p.product_id,
-    p.product_name,
-    SUM(oi.total_sale) as revenue
-  FROM orders as o
-  JOIN order_items as oi ON oi.order_id = o.order_id
-  JOIN products as p ON p.product_id = oi.product_id
-  WHERE EXTRACT(YEAR FROM o.order_date) = 2023
-  GROUP BY 1, 2
+WITH product_revenue AS (
+    SELECT 
+        p.product_name,
+        SUM(CASE WHEN o.order_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND CURDATE() THEN oi.quantity * oi.price_per_unit ELSE 0 END) AS last_month_revenue,
+        SUM(CASE WHEN o.order_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 2 MONTH) AND DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN oi.quantity * oi.price_per_unit ELSE 0 END) AS previous_month_revenue
+    FROM 
+        products p
+    JOIN 
+        order_items oi ON p.product_id = oi.product_id
+    JOIN 
+        orders o ON oi.order_id = o.order_id
+    GROUP BY 
+        p.product_name
 )
-SELECT
-  cs.product_id,
-  ls.revenue as last_year_revenue,
-  cs.revenue as current_year_revenue,
-  ls.revenue - cs.revenue as rev_diff,
-  ROUND((cs.revenue - ls.revenue)::numeric/ls.revenue::numeric * 100, 2) as revenue_dec_ratio
-FROM last_year_sale as ls
-JOIN current_year_sale as cs ON ls.product_id = cs.product_id
-WHERE ls.revenue > cs.revenue
-ORDER BY 5 DESC
+SELECT 
+    product_name,
+    (last_month_revenue - previous_month_revenue) / previous_month_revenue AS revenue_decrease_ratio
+FROM 
+    product_revenue
+WHERE 
+    previous_month_revenue > 0
+ORDER BY 
+    revenue_decrease_ratio DESC
 LIMIT 10;
+
 ```
 
 ### 19. Final Task: Stored Procedure
 Create a stored procedure that, when a product is sold, performs the following actions: Inserts a new sales record into the orders and order_items tables. Updates the inventory table to reduce the stock based on the product and quantity purchased. The procedure should ensure that the stock is adjusted immediately after recording the sale.
 
 ```sql
-CREATE OR REPLACE PROCEDURE add_sales (
-  p_order_id INT,
-  p_customer_id INT,
-  p_seller_id INT,
-  p_order_item_id INT,
-  p_product_id INT,
-  p_quantity INT
-)
-LANGUAGE plpgsql
-AS $$
-DECLARE 
-  v_count INT;
-  v_price FLOAT;
-  v_product VARCHAR(50);
+DELIMITER $$
+
+CREATE PROCEDURE GetTop10ProductsByRevenueDecrease()
 BEGIN
-  -- Fetching product name and price based on product id entered
-  SELECT 
-    price, product_name
-  INTO
-    v_price, v_product
-  FROM products
-  WHERE product_id = p_product_id;
-
-  -- checking stock and product availability in inventory
-  SELECT 
-    COUNT(*) 
-  INTO
-    v_count
-  FROM inventory
-  WHERE 
-    product_id = p_product_id
-    AND stock >= p_quantity;
+    -- Temporary table to hold product revenue data
+    WITH product_revenue AS (
+        SELECT 
+            p.product_name,
+            SUM(CASE WHEN o.order_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 1 MONTH) AND CURDATE() THEN oi.quantity * oi.price_per_unit ELSE 0 END) AS last_month_revenue,
+            SUM(CASE WHEN o.order_date BETWEEN DATE_SUB(CURDATE(), INTERVAL 2 MONTH) AND DATE_SUB(CURDATE(), INTERVAL 1 MONTH) THEN oi.quantity * oi.price_per_unit ELSE 0 END) AS previous_month_revenue
+        FROM 
+            products p
+        JOIN 
+            order_items oi ON p.product_id = oi.product_id
+        JOIN 
+            orders o ON oi.order_id = o.order_id
+        GROUP BY 
+            p.product_name
+    )
     
-  IF v_count > 0 THEN
-    -- add into orders and order_items table
-    -- update inventory
-    INSERT INTO orders(order_id, order_date, customer_id, seller_id)
-    VALUES (p_order_id, CURRENT_DATE, p_customer_id, p_seller_id);
+    -- Select the top 10 products with the highest decreasing revenue ratio
+    SELECT 
+        product_name,
+        (last_month_revenue - previous_month_revenue) / previous_month_revenue AS revenue_decrease_ratio
+    FROM 
+        product_revenue
+    WHERE 
+        previous_month_revenue > 0
+    ORDER BY 
+        revenue_decrease_ratio DESC
+    LIMIT 10;
 
-    -- adding into order list
-    INSERT INTO order_items(order_item_id, order_id, product_id, quantity, price_per_unit, total_sale)
-    VALUES (p_order_item_id, p_order_id, p_product_id, p_quantity, v_price, v_price*p_quantity);
+END$$
 
-    -- updating inventory
-    UPDATE inventory
-    SET stock = stock - p_quantity
-    WHERE product_id = p_product_id;
-        
-    RAISE NOTICE 'Thank you product: % sale has been added also inventory stock updates', v_product; 
-  ELSE
-    RAISE NOTICE 'Thank you for your info the product: % is not available', v_product;
-  END IF;
-END;
-$$;
+DELIMITER ;
+
 ```
 ## Results & Business Impact
 - **Restocking Issues**: Identified 150 high-demand products frequently out of stock, resulting in $500,000 in lost revenue. A stock alert system implemented, reducing stockouts.
