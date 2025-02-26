@@ -1,37 +1,37 @@
-# Inventory Management Optimization (SQL)
-Optimized ShopMart's e-commerce sales performance, customer segmentation, inventory management, and quality assurance using advanced SQL techniques such as window functions, CTEs, joins.
+# Optimizing Inventory Management (SQL)
+Improved ShopMart's online sales, customer groups, inventory management, and quality checks using advanced SQL techniques like window functions, Common Table Expressions (CTEs), and joins.
 
-## Table of Contents
-- [Business Problem](#business-problem)
-- [Project Overview](#project-overview)
-- [Data Overview](#data-overview)
-- [Schema Structure](#schema-structure)
-- [Data Cleaning](#data-cleaning)
-- [Challenges Identified](#challenges-identified)
-- [Solving Business Problems (SQL Queries)](#solving-business-problems-sql-queries)
-- [Result and Business Impact](#result-and-business-impact)
-- [Recommendations](#recommendations)
-- [Conclusion](#conclusion)
+## Contents
+- [Problem](#problem)
+- [Project Summary](#project-summary)
+- [Data Summary](#data-summary)
+- [Database Structure](#database-structure)
+- [Data Cleanup](#data-cleanup)
+- [Challenges Found](#challenges-found)
+- [Solving Problems with SQL](#solving-problems-with-sql)
+- [Results and Impact](#results-and-impact)
+- [Suggestions](#suggestions)
+- [End](#end)
 
-## Business Problem
-ShopMart, an e-commerce platform, is facing operational challenges related to sales performance, customer behavior, and inventory management. Despite a large and diverse customer base, with over 20,000 sales records and 10,000 products, the business has encountered key issues limiting growth. These challenges include inconsistent product restocking, high return rates in certain categories, shipping delays, and increasing customer acquisition costs without a proportional increase in customer retention. ShopMart’s Senior Executive leadership team is seeking insights to optimize their operations and improve overall profitability.
+## Problem
+ShopMart, an online store, faces problems with sales, customer behavior, and inventory management. Despite having many customers and products, they face key issues that limit growth. These problems include irregular restocking, high return rates in some categories, shipping delays, and rising customer acquisition costs without a corresponding increase in customer retention. ShopMart's leadership team is looking for insights to improve their operations and profitability.
 
-## Project Overview
-The objective of this project is to leverage advanced SQL techniques to analyze ShopMart’s sales and operational data, addressing critical e-commerce business challenges. The focus areas include:
+## Project Summary
+The goal of this project is to use advanced SQL techniques to analyze ShopMart's sales and operational data to address major business challenges. The main areas of focus are:
 
-- Optimizing sales trends
-- Identifying top and underperforming products
-- Segmenting customer behavior
-- Enhancing inventory management processes
+- Improving sales trends
+- Identifying best and worst-selling products
+- Grouping customers based on their behavior
+- Enhancing inventory management
 
-Complex SQL queries were utilized, including window functions, Common Table Expressions (CTEs), complex joins, query optimization techniques, and stored procedures, to tackle business problems such as revenue analysis, customer segmentation, inventory stock alerts, and shipping performance. This analysis also involved data cleaning, managing missing values, and structuring queries to solve real-world business problems.
+Complex SQL queries were used, including window functions, Common Table Expressions (CTEs), complex joins, query optimization techniques, and stored procedures, to tackle problems such as revenue analysis, customer grouping, inventory alerts, and shipping performance. The analysis also involved cleaning data, managing missing values, and structuring queries to solve real business problems.
 
-## Data Overview
-The dataset comprises multiple tables:
+## Data Summary
+The dataset includes several tables:
 
-- **Customers**: Contains customer information (e.g., ID, name, registration date, address, etc.).
+- **Customers**: Contains customer details ( ID, name, registration date, address, etc.).
 - **Orders**: Captures sales transactions including order ID, customer ID, product ID, order date, payment status, and shipping details.
-- **Products**: Contains product information including product name, category, price, and cost of goods sold.
+- **Products**: Contains product details including product name, category, price, and cost of goods sold.
 - **Inventory**: Tracks stock levels and restock dates for each product.
 - **Returns**: Contains details on product returns including return dates and reasons.
 - **Shipping Providers**: Includes information about the shipping provider used for each order, along with their average delivery times.
