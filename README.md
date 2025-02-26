@@ -135,21 +135,6 @@ WHERE customer_id IN (
 );
 ```
 
-## Handling Null Values
-Null values were handled contextually using SQL functions and logic:
-
-### Customer Addresses:
-For records where the address was missing, `COALESCE()` was used to replace null values with a default placeholder ("Unknown Address") while ensuring that legitimate non-null values remained unchanged.
-
-```sql
-UPDATE customers
-SET address = COALESCE(address, 'Unknown Address')
-WHERE address IS NULL;
-
-```
-### Shipping Information:
-For null return_date fields, no updates were made as nulls were valid entries indicating unreturned shipments. This was handled by allowing null values to remain unchanged unless explicitly required for reporting.
-
 ## Challenges Identified
 Through preliminary data exploration and discussions with ShopMart’s leadership team, the following business challenges were identified:
 
