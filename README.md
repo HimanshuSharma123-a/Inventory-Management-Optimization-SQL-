@@ -63,15 +63,15 @@ CREATE TABLE products (
   product_name VARCHAR(50),
   price FLOAT,
   cogs FLOAT,
-  category_id INT, -- FK 
+  category_id INT,  
   CONSTRAINT product_fk_category FOREIGN KEY(category_id) REFERENCES category(category_id)
 );
 
 CREATE TABLE orders (
   order_id INT PRIMARY KEY,
   order_date DATE,
-  customer_id INT, -- FK
-  seller_id INT, -- FK
+  customer_id INT, 
+  seller_id INT, 
   order_status VARCHAR(15),
   CONSTRAINT orders_fk_customers FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
   CONSTRAINT orders_fk_sellers FOREIGN KEY (seller_id) REFERENCES sellers(seller_id)
@@ -79,8 +79,8 @@ CREATE TABLE orders (
 
 CREATE TABLE order_items (
   order_item_id INT PRIMARY KEY,
-  order_id INT, -- FK
-  product_id INT, -- FK
+  order_id INT, 
+  product_id INT, 
   quantity INT,
   price_per_unit FLOAT,
   CONSTRAINT order_items_fk_orders FOREIGN KEY (order_id) REFERENCES orders(order_id),
@@ -89,7 +89,7 @@ CREATE TABLE order_items (
 
 CREATE TABLE payments (
   payment_id INT PRIMARY KEY,
-  order_id INT, -- FK
+  order_id INT, 
   payment_date DATE,
   payment_status VARCHAR(20),
   CONSTRAINT payments_fk_orders FOREIGN KEY (order_id) REFERENCES orders(order_id)
@@ -97,7 +97,7 @@ CREATE TABLE payments (
 
 CREATE TABLE shippings (
   shipping_id INT PRIMARY KEY,
-  order_id INT, -- FK
+  order_id INT, 
   shipping_date DATE,
   return_date DATE,
   shipping_providers VARCHAR(15),
@@ -107,7 +107,7 @@ CREATE TABLE shippings (
 
 CREATE TABLE inventory (
   inventory_id INT PRIMARY KEY,
-  product_id INT, -- FK
+  product_id INT, 
   stock INT,
   warehouse_id INT,
   last_stock_date DATE,
