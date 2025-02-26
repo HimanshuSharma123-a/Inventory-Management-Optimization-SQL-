@@ -147,14 +147,6 @@ SET address = COALESCE(address, 'Unknown Address')
 WHERE address IS NULL;
 
 ```
-### Payment Statuses:
-Orders with missing payment statuses were assigned a default value of "Pending" by checking for NULL and updating the relevant records using the COALESCE() function.
-
-```sql
-UPDATE orders
-SET payment_status = COALESCE(payment_status, 'Pending')
-WHERE payment_status IS NULL;
-```
 ### Shipping Information:
 For null return_date fields, no updates were made as nulls were valid entries indicating unreturned shipments. This was handled by allowing null values to remain unchanged unless explicitly required for reporting.
 
